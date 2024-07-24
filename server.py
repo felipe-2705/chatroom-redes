@@ -64,9 +64,9 @@ class Server():
 
         while True: 
             try: 
-                message = client.recv(2048) 
+                message = client.receive() 
                 if message: 
-                    command, msg = self.parse_command(message)
+                    command, msg = self.parse_command(message.rstrip('\n'))
                     
                     if command == 'LOGIN': 
                         """If Command is login we need to split client_id 
@@ -77,18 +77,20 @@ class Server():
                         client_id =  split_msg[0]
                         password = split_msg[1]
                         if self.authenticate(client_id):
-                            print(f"< Server > AUTHENTICATION ERROR for {client.addr}")
+                            print(f"< Server > AUTHENTICATION ERROR for {client.addr[0]}")
                             client.send("AUTHENTICATION ERROR")
                         else:
                             client.login(client_id,password)
                             client.send("AUTHENTICATION COMPLETED")
+                            self.msg_all('joinned chatroom',client)
                     if command == 'LOGOFF':
                         """If command if logoff we need to identify the client_id
                         then close connection and remove it from server list_of_clients"""
                         if self.islogged(client):
                             client_id =  msg
                             client.conn.close()
-                            self.remove(client) 
+                            self.remove(client)
+                            self.msg_all('left chatroom',client) 
                     if command == 'MSG':
                         """If command is msg we need to identify the client_dest
                         then send the message"""
@@ -128,11 +130,11 @@ class Server():
     the message """
     def msg_all(self,message, client): 
         message_format = f'< {client.client_id} > {message}'
+        print(message_format)
         for client_dest in self.list_of_clients: 
             if client_dest!=client: 
                 try: 
                     client_dest.send(message_format)
-                    print(message_format)
                 except: 
                     client_dest.conn.close() 
                     # if the link is broken, we remove the client 
@@ -145,7 +147,7 @@ class Server():
         if client_source != client_dest:
             try:
                 client_dest.send(message_format)
-                print(message_format)
+                print(f'< {client_source.client_id} > {message_format}')
             except:
                 client_dest.conn.close()
                 # if the link is broken, we remove the client 
@@ -158,7 +160,7 @@ class Server():
     except the requester"""
     def list(self,client):
         client_id_list = []
-        for c in self.list_of_clients():
+        for c in self.list_of_clients:
             if c.client_id != client.client_id:
                 client_id_list.append(c.client_id)
         
@@ -181,7 +183,9 @@ class Server():
         split_command = sentance.split(" ",1)
         if self.validate_command(split_command[0]):
             command = split_command[0]
-            message = split_command[1]
+            message = None
+            if command != 'LIST':
+                message = split_command[1]
             return command, message
         else:
             print(f'< {split_command[0]} > is not a valid command')
@@ -216,7 +220,7 @@ class Server():
 
             # creates and individual thread for every user 
             # that connects 
-            start_new_thread(self.clientthread,(conn,addr))
+            start_new_thread(self.clientthread,(client,))
 
 class Client():
     """Since, we will need to send messages and login specifics clients
@@ -230,19 +234,19 @@ class Client():
     def login(self,client_id,password):
         self.client_id = client_id
         self.password = password
-        print(f"< Server > {self.addr} logged as {self.client_id}")
+        print(f"< Server > {self.addr[0]} logged as {self.client_id}")
 
     """Send message to client of this specific object"""
     def send(self,message):
         try: 
-            self.conn.send(message) 
+            self.conn.send(message.encode()) 
         except: 
             self.conn.close()
             raise Exception()
         
-    def recv(self):
+    def receive(self):
         message = self.conn.recv(2048) 
-        return message
+        return message.decode()
 
 
 

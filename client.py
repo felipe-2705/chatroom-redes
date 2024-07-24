@@ -11,7 +11,40 @@ class Client():
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.connect((server_ip, server_port))
         self.socket_list = [self.server, sys.stdin]
+        self.list_of_commands = ['MSG','MSG_ALL','LOGIN','LOGOFF','LIST']
         print(f"Connected to Server {server_ip}:{server_port}")
+
+    def validate_command(self,command):
+        if command in self.list_of_commands:
+            return True
+        else:
+            return False
+
+    def parse_command(self,sentance):
+        split_command = sentance.split(" ",1)
+        if self.validate_command(split_command[0]):
+            command = split_command[0]
+            if command == 'MSG':
+                body = split_command[1]
+                split_body = body.split(" ",1)
+                client_id = split_body[0]
+                message = split_body[1]
+                print(f'< You > < {client_id} > {message}')
+            elif command == 'MSG_ALL':
+                message = split_command[1]
+                print(f'< You > {message}')
+            elif command == 'LOGIN':
+                body = split_command[1]
+                split_body = body.split()
+                client_id = split_body[0]
+                print(f'< You > LOGIN {client_id}')
+            elif command == 'LOGOFF':
+                print('< You > LOGFF')
+            elif command == 'LIST':
+                print('< You > LIST')
+            return True
+        else:
+            return False
 
     def start(self):
         while True: 
@@ -27,14 +60,19 @@ class Client():
 
             for socks in read_sockets: 
                 if socks == self.server: 
-                    message = socks.recv(2048) 
-                    print (message) 
-                else: 
-                    message = sys.stdin.readline() ## Reads message from stdin input 
-                    self.server.send(message) ## send message to the server 
-                    sys.stdout.write("<You>") ## write message to your screen
-                    sys.stdout.write(message) 
-                    sys.stdout.flush() ## clean stdout
+                    message = socks.recv(2048)
+                    if message != b'':
+                        print (message.decode()) 
+                else:
+                    try: 
+                        message = sys.stdin.readline() ## Reads message from stdin input 
+                        if self.parse_command(message.rstrip('\n')):
+                            self.server.send(message.encode()) ## send message to the server 
+                        else: 
+                            print("Invalid command")
+                    except:
+                        print("Fail to send message to server!!!")
+                        continue
 
 if len(sys.argv) != 3: 
     print ("Correct usage: script, IP address, port number")
