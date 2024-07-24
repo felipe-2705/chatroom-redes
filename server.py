@@ -31,13 +31,32 @@ class Server():
         """
         self.conn.listen(100) 
         self.list_of_clients = []
-        self.list_of_commands = ['msg','msg_all','login','logoff']
+        self.list_of_commands = ['MSG','MSG_ALL','LOGIN','LOGOFF','LIST']
 
 
     def get_client(self,client_id):
         for client in self.list_of_clients:
             if client.client_id == client_id:
                 return client
+        return None
+
+    def authenticate(self,client_id):
+        """We will check if client with client_id exists,
+        otherwise the client is not authenticated yet"""
+        client = self.get_client(client_id)
+        if client == None:
+            return False
+        else:
+            return True
+
+    def islogged(self,client):
+        if client.client_id != None: 
+            return True
+        else:
+            print(f'< Server > {client.addr} is not logged and can not send any message')
+            message = "You are not logged!!!"
+            client.send(message)
+            return False 
 
     def clientthread(self,client): 
         # sends a message to the client whose user object is conn 
@@ -49,42 +68,54 @@ class Server():
                 if message: 
                     command, msg = self.parse_command(message)
                     
-                    if command == 'login': 
+                    if command == 'LOGIN': 
                         """If Command is login we need to split client_id 
                         from password and try to authenticate the client
+                        if Client already authenticated the requests fail
                         """
                         split_msg = msg.split()
                         client_id =  split_msg[0]
                         password = split_msg[1]
-                        ## TODO create a check authentication if client already exists
-                        client.login(client_id,password)
-                    if command == 'logoff':
+                        if self.authenticate(client_id):
+                            print(f"< Server > AUTHENTICATION ERROR for {client.addr}")
+                            client.send("AUTHENTICATION ERROR")
+                        else:
+                            client.login(client_id,password)
+                            client.send("AUTHENTICATION COMPLETED")
+                    if command == 'LOGOFF':
                         """If command if logoff we need to identify the client_id
                         then close connection and remove it from server list_of_clients"""
-                        client_id =  msg
-                        client.conn.close()
-                        self.remove(client) 
-                    if command == 'msg':
+                        if self.islogged(client):
+                            client_id =  msg
+                            client.conn.close()
+                            self.remove(client) 
+                    if command == 'MSG':
                         """If command is msg we need to identify the client_dest
                         then send the message"""
-                        split_msg = msg.split(' ',1)
-                        client_id = split_msg[0]
-                        msg = split_msg[1]
-                        client_dest = self.get_client(client_id)
-                        if client_dest:
-                            """prints the message and address of the 
-                            user who just sent the message on the server 
-                            terminal"""
-                            print (f'< {client.client_id} > {message}') 
-                            self.msg(msg,client,client_dest)
-                        else:
-                            response = f'< Server > client_id {client_id} does not exist'
-                            client.send(response)
-                            print(response)
-                    if command == 'msg_all':
+                        if self.islogged(client):
+                            split_msg = msg.split(' ',1)
+                            client_id = split_msg[0]
+                            msg = split_msg[1]
+                            client_dest = self.get_client(client_id)
+                            if client_dest:
+                                """prints the message and address of the 
+                                user who just sent the message on the server 
+                                terminal"""
+                                self.msg(msg,client,client_dest)
+                            else:
+                                response = f'< Server > client_id {client_id} does not exist'
+                                client.send(response)
+                                print(response)
+                    if command == 'MSG_ALL':
                         """If command is msg_all we need to only send the message to all clients 
-                        who are not client sender"""    
-                        self.msg_all(msg, client) 
+                        who are not client sender"""  
+                        if self.islogged(client):  
+                            self.msg_all(msg, client) 
+                    if command == 'LIST':
+                        """If command is list we need to get all clients logged in
+                        who are not the requester"""
+                        if self.islogged(client):
+                            self.list(client)
                 else: 
                     """message may have no content if the connection 
                     is broken, in this case we remove the connection"""
@@ -100,7 +131,8 @@ class Server():
         for client_dest in self.list_of_clients: 
             if client_dest!=client: 
                 try: 
-                    client_dest.send(message_format) 
+                    client_dest.send(message_format)
+                    print(message_format)
                 except: 
                     client_dest.conn.close() 
                     # if the link is broken, we remove the client 
@@ -113,18 +145,37 @@ class Server():
         if client_source != client_dest:
             try:
                 client_dest.send(message_format)
+                print(message_format)
             except:
                 client_dest.conn.close()
                 # if the link is broken, we remove the client 
                 self.remove(client_dest)
+                print("< Server > Connection Error, Removing Client ...")
         else:
             print("< Server > Error client source is same as client dest")
 
-    ## TODO define a new service
+    """List command will list all connected clients
+    except the requester"""
+    def list(self,client):
+        client_id_list = []
+        for c in self.list_of_clients():
+            if c.client_id != client.client_id:
+                client_id_list.append(c.client_id)
+        
+        message_format = f'< Server > {client_id_list}'
+        try:
+            client.send(message_format)
+            print(message_format)
+        except:
+            client.conn.close()
+            # if the link is broken, we remove the client 
+            self.remove(client)
 
     def validate_command(self,command):
         if command in self.list_of_commands:
             return True
+        else:
+            return False
 
     def parse_command(self,sentance):
         split_command = sentance.split(" ",1)
@@ -146,6 +197,7 @@ class Server():
     """Here we will start the server to accept connection for self.conn socket
     binded to self.ip_address and port"""
     def start(self):
+        print("Server Started")
         while True: 
             """Accepts a connection request and stores two parameters, 
             conn which is a socket object for that user, and addr 
@@ -172,10 +224,13 @@ class Client():
     def __init__(self,addr,conn):
         self.addr = addr
         self.conn = conn
+        self.client_id = None
+        self.password = None
 
     def login(self,client_id,password):
         self.client_id = client_id
         self.password = password
+        print(f"< Server > {self.addr} logged as {self.client_id}")
 
     """Send message to client of this specific object"""
     def send(self,message):
@@ -205,5 +260,3 @@ server = Server(IP_address,Port)
 ## Starting Server
 server.start()
 server.conn.close()
-
-

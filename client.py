@@ -10,13 +10,11 @@ class Client():
     def __init__(self,server_ip, server_port):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.connect((server_ip, server_port))
+        self.socket_list = [self.server, sys.stdin]
         print(f"Connected to Server {server_ip}:{server_port}")
 
     def start(self):
         while True: 
-            # maintains a list of possible input streams 
-            sockets_list = [sys.stdin, self.server] 
-
             """ There are two possible input situations. Either the 
             user wants to give manual input to send to other people, 
             or the server is sending a message to be printed on the 
@@ -25,7 +23,7 @@ class Client():
             to send a message, then the if condition will hold true 
             below.If the user wants to send a message, the else 
             condition will evaluate as true"""
-            read_sockets,write_socket, error_socket = select.select(sockets_list,[],[]) 
+            read_sockets,_, _ = select.select(self.socket_list,[],[]) 
 
             for socks in read_sockets: 
                 if socks == self.server: 
