@@ -3,8 +3,10 @@
 import socket 
 import select 
 import sys 
+import hashlib
 
 
+salt = 'ciberseguranca'
 class Client():
 
     def __init__(self,server_ip, server_port):
@@ -20,7 +22,7 @@ class Client():
         else:
             return False
 
-    def parse_command(self,sentance):
+    def command(self,sentance):
         split_command = sentance.split(" ",1)
         if self.validate_command(split_command[0]):
             command = split_command[0]
@@ -37,11 +39,17 @@ class Client():
                 body = split_command[1]
                 split_body = body.split()
                 client_id = split_body[0]
-                print(f'< You > LOGIN {client_id}')
+                password =  split_body[1]
+                code_password  = password + salt
+                hash_password =  hashlib.sha256(code_password.encode())
+                full_command = f'LOGIN {client_id} {hash_password.hexdigest()}'
+                self.server.send(full_command.encode())
+                print(f'< You > LOGIN {client_id} {hash_password.hexdigest()}')
             elif command == 'LOGOFF':
                 print('< You > LOGFF')
             elif command == 'LIST':
                 print('< You > LIST')
+            self.server.send(sentance.encode())
             return True
         else:
             return False
@@ -61,14 +69,15 @@ class Client():
             for socks in read_sockets: 
                 if socks == self.server: 
                     message = socks.recv(2048)
-                    if message != b'':
-                        print (message.decode()) 
+                    if message:
+                        print (message.decode())
+                    else:
+                        print("Server closed connection")
+                        exit(1)
                 else:
                     try: 
                         message = sys.stdin.readline() ## Reads message from stdin input 
-                        if self.parse_command(message.rstrip('\n')):
-                            self.server.send(message.encode()) ## send message to the server 
-                        else: 
+                        if not self.command(message.rstrip('\n')):
                             print("Invalid command")
                     except:
                         print("Fail to send message to server!!!")
